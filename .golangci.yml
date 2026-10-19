@@ -1,0 +1,49 @@
+version: "2"
+linters:
+  enable:
+    - unused
+    - cyclop
+    - unparam
+    - staticcheck
+    - revive
+    - dupl
+    - modernize
+    - decorder
+    - dupl
+    - dupword
+    - errcheck
+    - errorlint
+    - exhaustive
+    - exhaustruct_v5
+    - exptostd
+    - fatcontext
+    - gochecksumtype
+    - gocognit
+    - gocritic
+    - govet
+    - iface
+    - ineffassign
+    - interfacebloat
+    - intrange
+    - maintidx
+    - nestif
+    - nilnesserr
+    - predeclared
+    - reassign
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - forcetypeassert
+    - makezero
+    - misspell
+    - nilerr
+
+linters.settings:
+  cyclop:
+    max-complexity: 15
+  gocognit:
+    min-complexity: 15
+
+run:
+  tests: true # Run linters on tests too

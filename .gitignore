@@ -1,0 +1,13 @@
+.venv/
+gomcp_server
+.fuse_hidden*
+skynet
+.skynet.yml
+skynet.exe
+
+
+# Generated Windows resources
+rsrc.syso
+.rollback/
+.memory/
+.prompts/
