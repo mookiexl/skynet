@@ -1,6 +1,7 @@
 # Skynet
 
 A Model Context Protocol (MCP) server that provides tools for file system operations, shell command execution, memory management, web search, and subagent orchestration.
+![Skynet Banner](images/banner.png)
 
 ## Features
 
@@ -37,6 +38,8 @@ When you start the server, an interactive Fyne GUI will appear with the followin
 - The server starts automatically when the GUI opens
 - Tool enable/disable settings and port configuration are saved automatically to `.skynet.yml` when the window is closed
 - The log window updates in real-time
+
+![Skynet GUI](screenshot.png)
 
 ## Available Tools
 
