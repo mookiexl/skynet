@@ -76,7 +76,7 @@ func MemoryWriteNew(args map[string]any) (any, error) {
 
 // MemoryWriteNewDefinition defines the tool schema.
 var MemoryWriteNewDefinition = map[string]any{
-	"description": "Add a new memory. Overwrite not allowed - use memory_edit or memory_overwrite to modify existing memories.",
+	"description": "Add a new memory. Hashes are dynamic - don't use them as pointers.",
 	"input_schema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{

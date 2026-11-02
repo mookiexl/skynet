@@ -68,6 +68,7 @@ var RipgrepDefinition = map[string]any{
 			},
 			"max_results": map[string]any{
 				"type":        "integer",
+				"default":     20,
 				"description": "Maximum number of matches to return",
 			},
 			"type": map[string]any{
@@ -81,10 +82,11 @@ var RipgrepDefinition = map[string]any{
 			},
 			"regex": map[string]any{
 				"type":        "boolean",
-				"description": "Pattern is regex (true) or plain text (false)",
+				"default":     true,
+				"description": "Pattern is regex, or plain text",
 			},
 		},
-		"required": []string{"pattern", "regex"},
+		"required": []string{"pattern"},
 	},
 }
 

@@ -13,7 +13,7 @@ func init() {
 
 // FileInsertTextDefinition defines the tool schema.
 var FileInsertTextDefinition = map[string]any{
-	"description": "Inserts text before or after a specific string anchor. Doesn't delete anchor.",
+	"description": "Inserts text before or after a specific string anchor.",
 	"input_schema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -23,11 +23,11 @@ var FileInsertTextDefinition = map[string]any{
 			},
 			"anchor_text": map[string]any{
 				"type":        "string",
-				"description": "The anchor string",
+				"description": "The anchor string. Not deleted.",
 			},
 			"text_to_insert": map[string]any{
 				"type":        "string",
-				"description": "The text to be inserted",
+				"description": "The text to be inserted. Don't repeat anchor!",
 			},
 			"insert_before": map[string]any{
 				"type":        "boolean",
@@ -37,12 +37,13 @@ var FileInsertTextDefinition = map[string]any{
 				"type":        "boolean",
 				"description": "If true, inserts relative to every occurrence of the anchor. Use with caution.",
 			},
-			"add_newlines": map[string]any{
+			"auto_newline": map[string]any{
 				"type":        "boolean",
-				"description": "Enable when insterting lines, disable when inserting individual words",
+				"default":     true,
+				"description": "Enabled by default, disable ONLY when inserting in the middle of a line",
 			},
 		},
-		"required": []string{"path", "anchor_text", "text_to_insert", "insert_before", "insert_all", "add_newlines"},
+		"required": []string{"path", "anchor_text", "text_to_insert", "insert_before", "insert_all"},
 	},
 }
 
@@ -121,10 +122,10 @@ func ExecuteFileInsertText(args map[string]any) (any, error) {
 	insert, ok3 := ArgString(args, "text_to_insert")
 	insertBefore, ok4 := ArgBool(args, "insert_before")
 	insertAll, ok5 := ArgBool(args, "insert_all")
-	addNewlines, ok6 := ArgBool(args, "add_newlines")
+	addNewlines, ok6 := ArgBool(args, "auto_newline")
 
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 {
-		return ErrorResult("missing required arguments: path, anchor_text, text_to_insert, insert_before, insert_all, and add_newlines are required"), nil
+		return ErrorResult("missing required arguments: path, anchor_text, text_to_insert, insert_before, insert_all are required"), nil
 	}
 
 	validatedPath, err := ValidatePath(path)
