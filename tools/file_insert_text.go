@@ -122,9 +122,12 @@ func ExecuteFileInsertText(args map[string]any) (any, error) {
 	insert, ok3 := ArgString(args, "text_to_insert")
 	insertBefore, ok4 := ArgBool(args, "insert_before")
 	insertAll, ok5 := ArgBool(args, "insert_all")
-	addNewlines, ok6 := ArgBool(args, "auto_newline")
+	addNewlines, ok := ArgBool(args, "auto_newline")
+	if !ok {
+		addNewlines = true // schema default
+	}
 
-	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 {
+	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 		return ErrorResult("missing required arguments: path, anchor_text, text_to_insert, insert_before, insert_all are required"), nil
 	}
 
