@@ -3,6 +3,7 @@ package tools
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -119,7 +120,10 @@ func parseRipgrepArgs(args map[string]any) ripgrepArgs {
 	hidden, _ := ArgBool(args, "hidden")
 	text, _ := ArgBool(args, "text")
 	wordMatch, _ := ArgBool(args, "word_match")
-	regex, _ := ArgBool(args, "regex")
+	regex := true
+	if b, ok := ArgBool(args, "regex"); ok {
+		regex = b
+	}
 
 	maxDepth := -1
 	if f, ok := ArgFloat(args, "max_depth"); ok {
@@ -136,7 +140,7 @@ func parseRipgrepArgs(args map[string]any) ripgrepArgs {
 		contextAfter = int(f)
 	}
 
-	maxResults := 0
+	maxResults := 20
 	if f, ok := ArgFloat(args, "max_results"); ok {
 		maxResults = int(f)
 	}
@@ -173,8 +177,8 @@ func buildRipgrepCmd(args ripgrepArgs) ([]string, error) {
 		cmdArgs = append(cmdArgs, "--case-sensitive")
 	}
 
-	// Literal (fixed string) search unless regex is explicitly requested.
-	// The regex parameter is required, so no pattern sniffing is needed.
+	// Literal (fixed string) search when regex is explicitly disabled.
+	// regex defaults to true, matching the schema default.
 	if !args.regex {
 		cmdArgs = append(cmdArgs, "-F")
 	}
@@ -236,16 +240,22 @@ func buildRipgrepCmd(args ripgrepArgs) ([]string, error) {
 	return cmdArgs, nil
 }
 
-func runSearch(cmdName string, cmdArgs []string) (string, string, error) {
+// runSearch executes cmd and returns stdout, stderr and the process exit code.
+// On a spawn failure (not a normal non-zero exit) exitCode is -1 and err is set.
+func runSearch(cmdName string, cmdArgs []string) (string, string, int, error) {
 	cmd := exec.Command(cmdName, cmdArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		return stdout.String(), stderr.String(), err
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return stdout.String(), stderr.String(), exitErr.ExitCode(), nil
+		}
+		return stdout.String(), stderr.String(), -1, err
 	}
-	return stdout.String(), stderr.String(), nil
+	return stdout.String(), stderr.String(), 0, nil
 }
 
 // ripgrepInstallHint returns platform-specific instructions for installing ripgrep,
@@ -277,20 +287,44 @@ func ExecuteRipgrep(args map[string]any) (any, error) {
 		}, nil
 	}
 
-	stdout, stderr, err := runSearch("rg", cmdArgs)
+	stdout, stderr, exitCode, err := runSearch("rg", cmdArgs)
+	return buildRipgrepResult(cmdArgs, stdout, stderr, exitCode, err), nil
+}
+
+// buildRipgrepResult assembles the tool result and always explains the
+// outcome: exit code 1 means "no matches" (not an error), any other
+// non-zero exit code carries ripgrep's diagnostic output, and the
+// executed command is echoed so failures can be diagnosed.
+func buildRipgrepResult(cmdArgs []string, stdout, stderr string, exitCode int, runErr error) map[string]any {
 	stdoutTruncated, stdoutWasTruncated := TruncateOutput(stdout)
 	stderrTruncated, stderrWasTruncated := TruncateOutput(stderr)
 
 	result := map[string]any{
-		"stdout": strings.TrimRight(stdoutTruncated, "\n"),
-	}
-
-	if err != nil {
-		result["exit_code"] = -1
+		"stdout":    strings.TrimRight(stdoutTruncated, "\n"),
+		"exit_code": exitCode,
 	}
 
 	if stderrTruncated != "" {
 		result["stderr"] = strings.TrimRight(stderrTruncated, "\n")
+	}
+
+	switch {
+	case runErr != nil:
+		// Spawn failure: ripgrep did not run at all.
+		result["error"] = fmt.Sprintf("failed to execute ripgrep: %v", runErr)
+	case exitCode == 1:
+		// ripgrep exit code 1 means "no matches found", not an error.
+		result["message"] = "No matches found."
+	case exitCode != 0:
+		errText := strings.TrimSpace(stderrTruncated)
+		if errText == "" {
+			errText = "ripgrep produced no diagnostic output. Check that the pattern is a valid regular expression and that the search path exists."
+		}
+		result["error"] = fmt.Sprintf("ripgrep failed with exit code %d: %s", exitCode, errText)
+	}
+
+	if result["error"] != nil || result["message"] != nil {
+		result["command"] = "rg " + strings.Join(cmdArgs, " ")
 	}
 
 	// Add truncation warning if output was truncated
@@ -305,5 +339,5 @@ func ExecuteRipgrep(args map[string]any) (any, error) {
 		result["truncation_warning"] = warning
 	}
 
-	return result, nil
+	return result
 }
