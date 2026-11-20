@@ -3,6 +3,7 @@ package tools
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -69,8 +70,7 @@ var RipgrepDefinition = map[string]any{
 			},
 			"max_results": map[string]any{
 				"type":        "integer",
-				"default":     20,
-				"description": "Maximum number of matches to return",
+				"description": "Maximum number of matches per file",
 			},
 			"type": map[string]any{
 				"type":        "string",
@@ -140,7 +140,7 @@ func parseRipgrepArgs(args map[string]any) ripgrepArgs {
 		contextAfter = int(f)
 	}
 
-	maxResults := 20
+	maxResults := int(RipgrepMaxResults.Load())
 	if f, ok := ArgFloat(args, "max_results"); ok {
 		maxResults = int(f)
 	}
@@ -193,9 +193,9 @@ func buildRipgrepCmd(args ripgrepArgs) ([]string, error) {
 		cmdArgs = append(cmdArgs, "-c")
 	}
 
-	// Hidden files
+	// Hidden files (--hidden; note: -H is --with-filename, not hidden files)
 	if args.hidden {
-		cmdArgs = append(cmdArgs, "-H")
+		cmdArgs = append(cmdArgs, "--hidden")
 	}
 
 	// Binary files as text
@@ -231,8 +231,8 @@ func buildRipgrepCmd(args ripgrepArgs) ([]string, error) {
 		cmdArgs = append(cmdArgs, "--type", args.fileType)
 	}
 
-	// Pattern and path
-	cmdArgs = append(cmdArgs, args.pattern)
+	// Pattern via -e so patterns starting with '-' are not parsed as flags
+	cmdArgs = append(cmdArgs, "-e", args.pattern)
 	if args.path != "." {
 		cmdArgs = append(cmdArgs, args.path)
 	}
@@ -242,8 +242,10 @@ func buildRipgrepCmd(args ripgrepArgs) ([]string, error) {
 
 // runSearch executes cmd and returns stdout, stderr and the process exit code.
 // On a spawn failure (not a normal non-zero exit) exitCode is -1 and err is set.
-func runSearch(cmdName string, cmdArgs []string) (string, string, int, error) {
-	cmd := exec.Command(cmdName, cmdArgs...)
+// ctx bounds the run: on expiry the process is killed and err is
+// context.DeadlineExceeded.
+func runSearch(ctx context.Context, cmdName string, cmdArgs []string) (string, string, int, error) {
+	cmd := exec.CommandContext(ctx, cmdName, cmdArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -274,6 +276,10 @@ func ripgrepInstallHint() string {
 // ExecuteRipgrep searches file contents using ripgrep.
 func ExecuteRipgrep(args map[string]any) (any, error) {
 	parsedArgs := parseRipgrepArgs(args)
+	// Enforce the working-directory sandbox (the tool description promises it).
+	if _, err := ValidatePath(parsedArgs.path); err != nil {
+		return ErrorResult(err.Error()), nil
+	}
 	cmdArgs, err := buildRipgrepCmd(parsedArgs)
 	if err != nil {
 		return ErrorResult(err.Error()), nil
@@ -287,7 +293,9 @@ func ExecuteRipgrep(args map[string]any) (any, error) {
 		}, nil
 	}
 
-	stdout, stderr, exitCode, err := runSearch("rg", cmdArgs)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultRipgrepTimeout)
+	defer cancel()
+	stdout, stderr, exitCode, err := runSearch(ctx, "rg", cmdArgs)
 	return buildRipgrepResult(cmdArgs, stdout, stderr, exitCode, err), nil
 }
 
@@ -310,8 +318,12 @@ func buildRipgrepResult(cmdArgs []string, stdout, stderr string, exitCode int, r
 
 	switch {
 	case runErr != nil:
-		// Spawn failure: ripgrep did not run at all.
-		result["error"] = fmt.Sprintf("failed to execute ripgrep: %v", runErr)
+		// Spawn failure or timeout: ripgrep did not run (or was killed).
+		if errors.Is(runErr, context.DeadlineExceeded) {
+			result["error"] = fmt.Sprintf("ripgrep timed out after %s. Narrow the search with glob, max_depth, or a more specific pattern.", DefaultRipgrepTimeout)
+		} else {
+			result["error"] = fmt.Sprintf("failed to execute ripgrep: %v", runErr)
+		}
 	case exitCode == 1:
 		// ripgrep exit code 1 means "no matches found", not an error.
 		result["message"] = "No matches found."
@@ -329,7 +341,7 @@ func buildRipgrepResult(cmdArgs []string, stdout, stderr string, exitCode int, r
 
 	// Add truncation warning if output was truncated
 	if stdoutWasTruncated || stderrWasTruncated {
-		warning := fmt.Sprintf("Output was truncated to %d characters.", MaxTextLimit)
+		warning := fmt.Sprintf("Output was truncated to %d characters.", int(MaxTextLimit.Load()))
 		if stdoutWasTruncated {
 			warning += fmt.Sprintf(" stdout total length: %d chars.", len(stdout))
 		}

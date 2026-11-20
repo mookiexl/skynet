@@ -18,7 +18,7 @@ var imageMIMETypes = map[string]string{
 	".png": "image/png", ".gif": "image/gif",
 	".webp": "image/webp", ".bmp": "image/bmp",
 	".tiff": "image/tiff", ".tif": "image/tiff",
-	".ico": "image/x-icon", ".svg": "image/svg+xml",
+	".svg": "image/svg+xml",
 }
 
 //
@@ -64,7 +64,7 @@ func ViewImage(args map[string]any) (any, error) {
 }
 
 func encodeAndReturn(mimeType string, data []byte) (any, error) {
-	if len(data) > MaxImageSize {
+	if len(data) > int(MaxImageSize.Load()) {
 		return ErrorResult("Image too large. Maximum size is 50MB."), nil
 	}
 
@@ -104,7 +104,7 @@ func rasterizeSVG(svgPath string) (any, error) {
 
 // ViewImageDefinition defines the tool schema.
 var ViewImageDefinition = map[string]any{
-	"description": "Reads an image file and returns its content as base64-encoded data with MIME type, suitable for Vision-Language Model (VLM) input. Supports JPEG, PNG, GIF, WebP, BMP, TIFF, ICO, and SVG formats. SVG files are automatically rasterized to PNG for VLM compatibility.",
+	"description": "Reads an image file and returns its content as base64-encoded data with MIME type, suitable for Vision-Language Model (VLM) input. Supports JPEG, PNG, GIF, WebP, BMP, TIFF, and SVG formats. SVG files are automatically rasterized to PNG for VLM compatibility.",
 	"input_schema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{

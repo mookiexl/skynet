@@ -7,8 +7,14 @@ import (
 	"time"
 )
 
-// MaxSleepSeconds is the maximum allowed sleep duration in seconds.
-const MaxSleepSeconds = 600
+// DefaultMaxSleepSeconds is the default maximum allowed sleep duration in
+// seconds. Configurable via .skynet.yml.
+const DefaultMaxSleepSeconds = 600
+
+// MaxSleepSeconds is the maximum allowed sleep duration in seconds. Defaults
+// to DefaultMaxSleepSeconds; updated at startup and from the Config dialog.
+// Atomic because it is read by tool handlers while the dialog may rewrite it.
+var MaxSleepSeconds atomic.Int64
 
 // sleepWoken is a persistent "wake" flag. It is raised whenever a background
 // process terminates (or the user signals a wake) and is cleared only when a
@@ -67,7 +73,7 @@ var SleepDefinition = map[string]any{
 		"properties": map[string]any{
 			"seconds": map[string]any{
 				"type":        "integer",
-				"description": "Number of seconds to sleep (1-600)",
+				"description": "Number of seconds to sleep",
 			},
 		},
 		"required": []string{"seconds"},
@@ -91,8 +97,8 @@ func ExecuteSleep(args map[string]any) (any, error) {
 	if seconds < 1 {
 		return ErrorResult("seconds must be at least 1"), nil
 	}
-	if seconds > MaxSleepSeconds {
-		return ErrorResult(fmt.Sprintf("seconds must be at most %d", MaxSleepSeconds)), nil
+	if seconds > int(MaxSleepSeconds.Load()) {
+		return ErrorResult(fmt.Sprintf("seconds must be at most %d", int(MaxSleepSeconds.Load()))), nil
 	}
 
 	// If the wake flag is already raised (e.g. a process finished before we

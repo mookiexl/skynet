@@ -22,8 +22,9 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	_, _ = b.buf.Write(p)
-	if b.buf.Len() > MaxTextLimit {
-		b.buf.Next(b.buf.Len() - MaxTextLimit)
+	limit := int(MaxTextLimit.Load())
+	if b.buf.Len() > limit {
+		b.buf.Next(b.buf.Len() - limit)
 	}
 	return len(p), nil
 }

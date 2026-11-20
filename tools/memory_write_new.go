@@ -29,11 +29,12 @@ func MemoryWriteNew(args map[string]any) (any, error) {
 
 	// Truncate description and content if needed
 	if len(description) > MemoryDirMaxDescriptionLen {
-		description = description[:MemoryDirMaxDescriptionLen]
+		description = TruncateRuneSafe(description, MemoryDirMaxDescriptionLen)
 	}
 
-	if len(content) > MaxTextLimit {
-		content = content[:MaxTextLimit]
+	limit := int(MaxTextLimit.Load())
+	if len(content) > limit {
+		content = TruncateRuneSafe(content, limit)
 	}
 
 	// Create memory directory if it doesn't exist
@@ -81,7 +82,7 @@ var MemoryWriteNewDefinition = map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"description": map[string]any{"type": "string", "description": "Brief one-line description (truncated to 300 characters)"},
-			"content":     map[string]any{"type": "string", "description": fmt.Sprintf("Memory content (truncated to %d characters)", MaxTextLimit)},
+			"content":     map[string]any{"type": "string", "description": fmt.Sprintf("Memory content (truncated to %d characters)", int(MaxTextLimit.Load()))},
 		},
 		"required": []string{"description"},
 	},

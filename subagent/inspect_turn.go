@@ -48,7 +48,7 @@ func (m *Manager) InspectTurn(args map[string]any) (any, error) {
 		"content": content,
 	}
 	if truncated {
-		result["note"] = fmt.Sprintf("content truncated to %d characters", tools.MaxTextLimit)
+		result["note"] = fmt.Sprintf("content truncated to %d characters", int(tools.MaxTextLimit.Load()))
 	}
 	return result, nil
 }

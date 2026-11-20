@@ -15,11 +15,12 @@ import (
 )
 
 // Host carries the host server's dependencies into the run manager: the
-// subagent tool security policy, the subagent LLM API endpoint, and the
-// two log buffers.
+// subagent tool security policy, the subagent LLM API endpoint, the run
+// budgets (Limits), and the two log buffers.
 type Host struct {
 	IsEnabled   func(name string) bool
 	LLMAPI      func() string
+	Limits      Limits
 	HostLog     func(string)
 	SubagentLog func(string)
 }
@@ -44,16 +45,22 @@ type Manager struct {
 	hashSeq   atomic.Uint64
 	isEnabled func(name string) bool
 	api       func() string
+	limits    Limits
 	hostLog   func(string)
 	subLog    func(string)
 }
 
 // NewManager creates a run manager from the host's dependencies.
 func NewManager(host Host) *Manager {
+	limits := host.Limits
+	if limits == (Limits{}) { //nolint:exhaustruct_v5
+		limits = DefaultLimits()
+	}
 	return &Manager{ //nolint:exhaustruct_v5
 		runs:      make(map[string]*runState),
 		isEnabled: host.IsEnabled,
 		api:       host.LLMAPI,
+		limits:    limits,
 		hostLog:   host.HostLog,
 		subLog:    host.SubagentLog,
 	}
@@ -98,7 +105,7 @@ func (m *Manager) execute(state *runState, verb, hash string, fn runFn) (any, er
 	m.hostLog(verb + " completed")
 	result := map[string]any{"hash": hash, "response": final}
 	if truncated {
-		result["truncation_warning"] = fmt.Sprintf("Subagent response truncated to %d characters.", tools.MaxTextLimit)
+		result["truncation_warning"] = fmt.Sprintf("Subagent response truncated to %d characters.", int(tools.MaxTextLimit.Load()))
 	}
 	if updated != nil {
 		result["response"] = appendContextStats(final, m.api(), updated, lastUsage, duration, m.hostLog)
@@ -200,6 +207,21 @@ func (m *Manager) stateToolNames(state *runState) []string {
 	return m.listEnabledTools()
 }
 
+// getLimits returns a copy of the current run budgets (thread-safe).
+func (m *Manager) getLimits() Limits {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.limits
+}
+
+// SetLimits updates the run budgets. New runs pick up the new values;
+// in-flight runs keep the budgets they started with (thread-safe).
+func (m *Manager) SetLimits(limits Limits) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.limits = limits
+}
+
 // buildConfig assembles the run Config from the host's current settings.
 func (m *Manager) buildConfig(available []SubTool, thinking, haltOnNarration bool) Config {
 	return Config{
@@ -208,6 +230,7 @@ func (m *Manager) buildConfig(available []SubTool, thinking, haltOnNarration boo
 		Log:             m.subLog,
 		Thinking:        thinking,
 		HaltOnNarration: haltOnNarration,
+		Limits:          m.getLimits(),
 	}
 }
 
@@ -220,7 +243,7 @@ func interruptedResponse(hash, final string, interrupted *InterruptedError, trun
 	}
 	result := map[string]any{"hash": hash, "response": response}
 	if truncated {
-		result["truncation_warning"] = fmt.Sprintf("Subagent response truncated to %d characters.", tools.MaxTextLimit)
+		result["truncation_warning"] = fmt.Sprintf("Subagent response truncated to %d characters.", int(tools.MaxTextLimit.Load()))
 	}
 	return result
 }

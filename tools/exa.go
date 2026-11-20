@@ -96,8 +96,12 @@ func callExaMCP(ctx context.Context, req exaMCPRPCRequest) (*exaMCPRPCResponse, 
 		return nil, fmt.Errorf("exa MCP returned status %d", resp.StatusCode)
 	}
 
-	// Parse SSE format: lines start with "data: "
+	// Parse SSE format: lines start with "data: ".
+	// A single data line can carry the whole page as JSON, so raise the
+	// scanner's default 64KB token limit (same pattern as subagent's
+	// readChatStream).
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(line) > 5 && line[:5] == "data:" {
@@ -206,6 +210,9 @@ func ExecuteWebFetchExa(args map[string]any) (any, error) {
 	if maxFloat, ok := ArgFloat(args, "maxCharacters"); ok {
 		maxChars = int(maxFloat)
 	}
+	// Clamp to the configured range (numResults is already clamped 1..20).
+	maxChars = max(1, maxChars)
+	maxChars = min(int(ExaMaxCharacters.Load()), maxChars)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

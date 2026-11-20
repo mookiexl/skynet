@@ -30,8 +30,9 @@ func MemoryOverwrite(args map[string]any) (any, error) {
 	}
 
 	// Truncate content to the maximum allowed limit
-	if len(content) > MaxTextLimit {
-		content = content[:MaxTextLimit]
+	limit := int(MaxTextLimit.Load())
+	if len(content) > limit {
+		content = TruncateRuneSafe(content, limit)
 	}
 
 	// If description changes, the filename and hash change

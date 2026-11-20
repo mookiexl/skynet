@@ -21,7 +21,7 @@ func buildShellResult(stdoutRaw, stderrRaw string, elapsedMs int64, exitCode int
 
 	// Add truncation warning if output was truncated
 	if stdoutWasTruncated || stderrWasTruncated {
-		warning := fmt.Sprintf("Output was truncated to %d characters.", MaxTextLimit)
+		warning := fmt.Sprintf("Output was truncated to %d characters.", int(MaxTextLimit.Load()))
 		if stdoutWasTruncated {
 			warning += fmt.Sprintf(" stdout total length: %d chars.", len(stdoutRaw))
 		}
@@ -47,7 +47,7 @@ func runShellWithBackgroundTransition(cmd *exec.Cmd, pgid int, stdout, stderr *b
 	}()
 
 	// Select on done + timer
-	timer := time.After(ShellTimeLimit)
+	timer := time.After(time.Duration(ShellTimeLimitSeconds.Load()) * time.Second)
 	select {
 	case err := <-done:
 		// Command completed
@@ -82,7 +82,7 @@ func runShellWithBackgroundTransition(cmd *exec.Cmd, pgid int, stdout, stderr *b
 			"message":       "time limit exceeded, continuing in background as " + id,
 		}
 		if stdoutWasTruncated || stderrWasTruncated {
-			warning := fmt.Sprintf("Output was truncated to %d characters.", MaxTextLimit)
+			warning := fmt.Sprintf("Output was truncated to %d characters.", int(MaxTextLimit.Load()))
 			if stdoutWasTruncated {
 				warning += fmt.Sprintf(" stdout total length: %d chars.", len(stdoutRaw))
 			}

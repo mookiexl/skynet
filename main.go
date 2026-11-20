@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -12,12 +13,39 @@ import (
 	"skynet/tools"
 )
 
+// applyToolsConfig syncs the runtime Config into the tools package limits.
+func applyToolsConfig(cfg Config) {
+	tools.MaxTextLimit.Store(int64(cfg.MaxTextLimit))
+	tools.ShellTimeLimitSeconds.Store(int64(cfg.ShellTimeLimitSeconds))
+	tools.MaxRollbackSize.Store(int64(cfg.MaxRollbackSizeMB) * tools.MBConversion)
+	tools.MaxLoopHistory.Store(int64(cfg.MaxLoopHistory))
+	tools.MaxSleepSeconds.Store(int64(cfg.MaxSleepSeconds))
+	tools.RipgrepMaxResults.Store(int64(cfg.RipgrepMaxResults))
+	tools.ExaMaxCharacters.Store(int64(cfg.ExaMaxCharacters))
+	tools.MaxImageSize.Store(int64(cfg.MaxImageSizeMB) * tools.MBConversion)
+	tools.MaxImageDimension.Store(int64(cfg.MaxImageDimension))
+}
+
+// subagentLimits converts the runtime Config into the subagent run budgets.
+func subagentLimits(cfg Config) subagent.Limits {
+	return subagent.Limits{
+		MaxIterations:         cfg.SubagentMaxIterations,
+		RequestTimeout:        time.Duration(cfg.SubagentRequestTimeoutSeconds) * time.Second,
+		RunDeadline:           time.Duration(cfg.SubagentDeadlineSeconds) * time.Second,
+		ReasoningBudgetTokens: cfg.SubagentThinkingBudgetTokens,
+	}
+}
+
 func main() {
 	// Load persisted settings
 	settings, loaded := LoadSettings()
 	if loaded {
 		fmt.Println("Loading settings from", settingsFile)
 	}
+
+	// The embedded Config IS the runtime config; LoadSettings starts from
+	// DefaultSettings, so any key missing from .skynet.yml keeps its default.
+	cfg := settings.Config
 
 	// Initialize the single source of truth
 	def := DefaultSettings()
@@ -28,7 +56,11 @@ func main() {
 		Port:                 def.Port,
 		RemoteAccess:         def.RemoteAccess,
 		SubagentLLMAPI:       def.SubagentLLMAPI,
+		Config:               cfg,
 	}
+
+	// Sync the runtime Config into the tools package limits
+	applyToolsConfig(cfg)
 
 	// Wire the subagent module into the host and register its tools
 	// BEFORE initializing enabled tools from the registry, so the
@@ -37,6 +69,7 @@ func main() {
 	subagentMgr = subagent.NewManager(subagent.Host{
 		IsEnabled:   State.IsSubagentToolEnabled,
 		LLMAPI:      State.GetSubagentLLMAPI,
+		Limits:      subagentLimits(cfg),
 		HostLog:     GlobalLog.AddLine,
 		SubagentLog: AddSubagentLine,
 	})

@@ -4,16 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	_ "image/gif"  // registers the GIF decoder with the image package
+	_ "image/jpeg" // registers the JPEG decoder with the image package
 	"image/png"
 
+	_ "golang.org/x/image/bmp" // registers the BMP decoder with the image package
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/tiff" // registers the TIFF decoder with the image package
+	_ "golang.org/x/image/webp" // registers the WebP decoder with the image package
 )
 
 // limitImageSize downscales the image to fit within MaxImageDimension x MaxImageDimension pixels.
 // Returns the original data unchanged if it already fits within the limit.
 func limitImageSize(imageData []byte) ([]byte, error) {
-	// Decode PNG data
-	img, err := png.Decode(bytes.NewReader(imageData))
+	// Decode any registered format (png, jpeg, gif, bmp, tiff, webp).
+	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
@@ -21,9 +26,10 @@ func limitImageSize(imageData []byte) ([]byte, error) {
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
+	maxDim := int(MaxImageDimension.Load())
 
 	// Check if downscale is needed
-	if width <= MaxImageDimension && height <= MaxImageDimension {
+	if width <= maxDim && height <= maxDim {
 		return imageData, nil
 	}
 
@@ -31,12 +37,12 @@ func limitImageSize(imageData []byte) ([]byte, error) {
 	var targetW, targetH int
 	if float64(width)/float64(height) > 1.0 {
 		// Wider than tall - scale by width
-		targetW = MaxImageDimension
-		targetH = int(float64(height) * float64(MaxImageDimension) / float64(width))
+		targetW = maxDim
+		targetH = int(float64(height) * float64(maxDim) / float64(width))
 	} else {
 		// Taller than wide - scale by height
-		targetH = MaxImageDimension
-		targetW = int(float64(width) * float64(MaxImageDimension) / float64(height))
+		targetH = maxDim
+		targetW = int(float64(width) * float64(maxDim) / float64(height))
 	}
 
 	// Create destination image

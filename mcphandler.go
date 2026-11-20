@@ -27,7 +27,6 @@ type LoopEntry struct {
 var (
 	loopMutex   sync.Mutex
 	loopHistory []LoopEntry
-	maxLoopHist = tools.MaxLoopHistory
 )
 
 // getCallSignature builds a canonical string identifying a tool call
@@ -51,7 +50,7 @@ func checkAndAddToLoopHistory(name string, args map[string]any, result string) b
 		}
 	}
 	loopHistory = append(loopHistory, LoopEntry{signature: sig, result: result})
-	if len(loopHistory) > maxLoopHist {
+	if len(loopHistory) > int(tools.MaxLoopHistory.Load()) {
 		loopHistory = loopHistory[1:]
 	}
 	return false

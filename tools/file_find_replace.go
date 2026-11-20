@@ -18,8 +18,8 @@ func parseFindAndReplaceArgs(args map[string]any) (string, string, string, bool,
 		return "", "", "", false, fmt.Errorf("path required")
 	}
 	searchText, ok := ArgString(args, "find")
-	if !ok {
-		return "", "", "", false, fmt.Errorf("search text required")
+	if !ok || searchText == "" {
+		return "", "", "", false, fmt.Errorf("search text is required and must be non-empty")
 	}
 	replacement, ok := ArgString(args, "replace_with")
 	if !ok {

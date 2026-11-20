@@ -69,7 +69,7 @@ func savePngFile(outputFile string, pngData []byte) error {
 }
 
 func encodeSvgResult(pngData []byte, svgInputSize int, outputFile string) (any, error) {
-	if len(pngData) > MaxImageSize {
+	if len(pngData) > int(MaxImageSize.Load()) {
 		return ErrorResult("Rasterized image too large. Maximum size is 50MB."), nil
 	}
 

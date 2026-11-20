@@ -14,13 +14,16 @@ const settingsFile = ".skynet.yml"
 // DefaultSubagentLLMAPI is the default subagent LLM API endpoint.
 const DefaultSubagentLLMAPI = "http://localhost:8080/v1"
 
-// Settings represents the server configuration
+// Settings represents the server configuration. It embeds Config so the
+// runtime limits are the persisted limits: one struct, one field list, one
+// yaml payload.
 type Settings struct {
 	EnabledTools         map[string]bool `yaml:"enabled_tools"`
 	SubagentEnabledTools map[string]bool `yaml:"subagent_enabled_tools"`
 	Port                 int             `yaml:"port"`
 	RemoteAccess         bool            `yaml:"remote_access"`
 	SubagentLLMAPI       string          `yaml:"subagent_llm_api"`
+	Config
 }
 
 // DefaultSettings returns a Settings struct with default values
@@ -31,6 +34,7 @@ func DefaultSettings() Settings {
 		Port:                 tools.DefaultServerPort,
 		RemoteAccess:         false,
 		SubagentLLMAPI:       DefaultSubagentLLMAPI,
+		Config:               DefaultConfig(),
 	}
 }
 

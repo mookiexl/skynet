@@ -10,6 +10,25 @@ func init() {
 	RegisterTool("file_read_from_line", ReadFromFileDefinition, ReadFromFile)
 }
 
+// parseReadArgs extracts and validates the start_line and num_lines arguments.
+func parseReadArgs(args map[string]any) (startLine, numLines float64, err error) {
+	startLine, ok := ArgFloat(args, "start_line")
+	if !ok {
+		return 0, 0, fmt.Errorf("start_line is required")
+	}
+	if startLine < 1 || startLine > 1e9 {
+		return 0, 0, fmt.Errorf("start_line must be a positive integer between 1 and 1000000000")
+	}
+	numLines, ok = ArgFloat(args, "num_lines")
+	if !ok {
+		numLines = DefaultNumLines
+	}
+	if numLines <= 0 {
+		return 0, 0, fmt.Errorf("num_lines must be a positive integer")
+	}
+	return startLine, numLines, nil
+}
+
 // ReadFromFile reads specific lines from a file.
 func ReadFromFile(args map[string]any) (any, error) {
 	path, ok := ArgString(args, "path")
@@ -17,14 +36,9 @@ func ReadFromFile(args map[string]any) (any, error) {
 		return ErrorResult("File path is required"), nil
 	}
 
-	startLine, ok := ArgFloat(args, "start_line")
-	if !ok {
-		return ErrorResult("Start line number is required"), nil
-	}
-
-	numLines, ok := ArgFloat(args, "num_lines")
-	if !ok {
-		numLines = DefaultNumLines
+	startLine, numLines, err := parseReadArgs(args)
+	if err != nil {
+		return ErrorResult(err.Error()), nil
 	}
 
 	absPath, err := ValidatePath(path)
@@ -72,9 +86,10 @@ func ReadFromFile(args map[string]any) (any, error) {
 		"total_lines_in_file": len(lines),
 	}
 
-	if len(contentStr) > MaxTextLimit {
-		result["truncation_warning"] = fmt.Sprintf("Output truncated to %d characters.", MaxTextLimit)
-		result["content"] = contentStr[:MaxTextLimit]
+	limit := int(MaxTextLimit.Load())
+	if len(contentStr) > limit {
+		result["truncation_warning"] = fmt.Sprintf("Output truncated to %d characters.", limit)
+		result["content"] = TruncateRuneSafe(contentStr, limit)
 		return result, nil
 	}
 

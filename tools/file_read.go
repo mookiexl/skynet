@@ -29,13 +29,14 @@ func ReadFile(args map[string]any) (any, error) {
 	contentStr := string(data)
 
 	// Apply truncation after formatting
-	if len(contentStr) > MaxTextLimit {
-		contentStr = contentStr[:MaxTextLimit]
+	limit := int(MaxTextLimit.Load())
+	if len(contentStr) > limit {
+		contentStr = TruncateRuneSafe(contentStr, limit)
 
 		result := map[string]any{
 			"content":            contentStr,
 			"size":               len(data),
-			"truncation_warning": fmt.Sprintf("File was truncated to %d characters. Total file size: %d bytes.", MaxTextLimit, len(data)),
+			"truncation_warning": fmt.Sprintf("File was truncated to %d characters. Total file size: %d bytes.", limit, len(data)),
 		}
 		return result, nil
 	}

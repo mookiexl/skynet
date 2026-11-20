@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"skynet/tools"
 )
 
 // errDone signals that the subagent produced its final answer, i.e. a step
@@ -42,22 +44,49 @@ func (e *InterruptedError) Error() string {
 }
 
 const (
-	// MaxIterations is the maximum number of LLM round-trips in one subagent run.
-	MaxIterations = 100
+	// DefaultMaxIterations is the default maximum number of LLM round-trips in
+	// one subagent run.
+	DefaultMaxIterations = 100
 
-	// RequestTimeout is the per-LLM-request timeout.
-	RequestTimeout = 10 * time.Minute
+	// DefaultRequestTimeout is the default per-LLM-request timeout.
+	DefaultRequestTimeout = 10 * time.Minute
 
 	// LogResultTruncate is the max characters of a tool result shown in the log.
 	LogResultTruncate = 2000
 
-	// RunDeadline is the total wall-clock budget for one subagent run.
-	RunDeadline = 60 * time.Minute
+	// DefaultRunDeadline is the default total wall-clock budget for one
+	// subagent run.
+	DefaultRunDeadline = 60 * time.Minute
 
-	// ReasoningBudgetTokens is the token budget for the model's reasoning
-	// (thinking) on each subagent LLM request when thinking is enabled.
-	ReasoningBudgetTokens = 4096
+	// DefaultReasoningBudgetTokens is the default token budget for the model's
+	// reasoning (thinking) on each subagent LLM request when thinking is
+	// enabled.
+	DefaultReasoningBudgetTokens = 4096
 )
+
+// Limits are the configurable run budgets for a subagent run. Defaults come
+// from DefaultLimits; the host sets them from the loaded settings.
+type Limits struct {
+	// MaxIterations is the maximum number of LLM round-trips in one run.
+	MaxIterations int
+	// RequestTimeout is the per-LLM-request timeout.
+	RequestTimeout time.Duration
+	// RunDeadline is the total wall-clock budget for one run.
+	RunDeadline time.Duration
+	// ReasoningBudgetTokens is the reasoning token budget per request when
+	// thinking is enabled.
+	ReasoningBudgetTokens int
+}
+
+// DefaultLimits returns the default subagent run budgets.
+func DefaultLimits() Limits {
+	return Limits{
+		MaxIterations:         DefaultMaxIterations,
+		RequestTimeout:        DefaultRequestTimeout,
+		RunDeadline:           DefaultRunDeadline,
+		ReasoningBudgetTokens: DefaultReasoningBudgetTokens,
+	}
+}
 
 // reasoningBudgetMessage is sent to the model when its reasoning budget
 // is exceeded, mirroring the main app's implementation.
@@ -88,8 +117,10 @@ type Config struct {
 	Log func(string)
 	// Thinking enables extended (reasoning) thinking on the model side.
 	// When true, the model's reasoning budget is capped at
-	// ReasoningBudgetTokens for every subagent LLM request.
+	// Limits.ReasoningBudgetTokens for every subagent LLM request.
 	Thinking bool
+	// Limits are the configurable run budgets for this run.
+	Limits Limits
 	// HaltOnNarration controls when the run terminates. When true, any step
 	// that produces answer content ends the run, even if tool calls were
 	// also requested. When false, a step with content AND tool calls
@@ -311,8 +342,8 @@ func runLoop(ctx context.Context, cfg Config, messages []Message, pending []comp
 		}
 	}
 
-	for iter := 1; iter <= MaxIterations; iter++ {
-		remaining := RunDeadline - time.Since(start)
+	for iter := 1; iter <= cfg.Limits.MaxIterations; iter++ {
+		remaining := cfg.Limits.RunDeadline - time.Since(start)
 		content, toolCalls, usage, err := runIteration(runCtx, cfg, &messages, &loopHistory, logf, iter, remaining)
 		if err != nil {
 			if errors.Is(err, errDone) {
@@ -327,7 +358,7 @@ func runLoop(ctx context.Context, cfg Config, messages []Message, pending []comp
 		lastContent = content
 		lastUsage = usage
 	}
-	f, m, e := finishRun(runCtx, lastContent, messages, &InterruptedError{Reason: fmt.Sprintf("reached max iterations (%d) without a final answer", MaxIterations)})
+	f, m, e := finishRun(runCtx, lastContent, messages, &InterruptedError{Reason: fmt.Sprintf("reached max iterations (%d) without a final answer", cfg.Limits.MaxIterations)})
 	return f, m, nil, lastUsage, time.Since(start), e
 }
 
@@ -340,12 +371,12 @@ func runIteration(runCtx context.Context, cfg Config, messages *[]Message, loopH
 		return "", nil, 0, &InterruptedError{Reason: "terminated by user"}
 	}
 	if remaining <= 0 {
-		return "", nil, 0, &InterruptedError{Reason: fmt.Sprintf("exceeded total run deadline (%s)", RunDeadline)}
+		return "", nil, 0, &InterruptedError{Reason: fmt.Sprintf("exceeded total run deadline (%s)", cfg.Limits.RunDeadline)}
 	}
 	// Cap the per-request timeout to the per-LLM-request budget so a single
 	// slow request cannot blow past RequestTimeout by waiting on the full
 	// RunDeadline window.
-	reqTimeout := min(remaining, RequestTimeout)
+	reqTimeout := min(remaining, cfg.Limits.RequestTimeout)
 	content, thinking, toolCalls, usageTotal, err := llmStreamCall(runCtx, cfg, *messages, logf, reqTimeout)
 	if err != nil {
 		return "", nil, 0, fmt.Errorf("subagent LLM request failed: %w", err)
@@ -515,7 +546,7 @@ func buildChatRequest(cfg Config, messages []Message) chatRequest {
 	// Cap the model's reasoning budget when thinking is enabled so a
 	// demanding subagent task cannot burn unbounded thinking tokens.
 	if cfg.Thinking {
-		budget := ReasoningBudgetTokens
+		budget := cfg.Limits.ReasoningBudgetTokens
 		reqBody.ThinkingBudgetTokens = &budget
 		reqBody.ReasoningBudgetMsg = reasoningBudgetMessage
 	}
@@ -718,12 +749,13 @@ func executeSubagentTool(cfg Config, tc completedToolCall) (string, error) {
 	return string(data), nil
 }
 
-// truncateForLog truncates long tool results for the monitoring log.
+// truncateForLog truncates long tool results for the monitoring log,
+// never splitting a multi-byte UTF-8 rune.
 func truncateForLog(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + fmt.Sprintf("... [truncated, %d chars total]", len(s))
+	return tools.TruncateRuneSafe(s, maxLen) + fmt.Sprintf("... [truncated, %d chars total]", len(s))
 }
 
 // Terminate cancels the active subagent run, if any.

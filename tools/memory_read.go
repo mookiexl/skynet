@@ -31,8 +31,9 @@ func MemoryRead(args map[string]any) (any, error) {
 		actualContent = lines[1]
 	}
 
-	if len(actualContent) > MaxTextLimit {
-		actualContent = actualContent[:MaxTextLimit]
+	limit := int(MaxTextLimit.Load())
+	if len(actualContent) > limit {
+		actualContent = TruncateRuneSafe(actualContent, limit)
 		return map[string]any{
 			"success":            true,
 			"hash":               hash,
@@ -40,7 +41,7 @@ func MemoryRead(args map[string]any) (any, error) {
 			"description":        mem.Description,
 			"content":            actualContent,
 			"size":               mem.Size,
-			"truncation_warning": fmt.Sprintf("Memory content truncated to %d characters.", MaxTextLimit),
+			"truncation_warning": fmt.Sprintf("Memory content truncated to %d characters.", limit),
 		}, nil
 	}
 

@@ -224,7 +224,12 @@ func ShowToolTUI(a fyne.App) {
 	// Current working directory label under title bar
 	cwdDir, _ := os.Getwd()
 	cwdLabel := widget.NewLabel(cwdDir)
-	topArea := container.NewVBox(topBar, container.NewPadded(cwdLabel))
+	configBtn := widget.NewButton("Config", func() {
+		showConfigDialog(w)
+	})
+
+	cwdRow := container.NewBorder(nil, nil, nil, configBtn, cwdLabel)
+	topArea := container.NewVBox(topBar, cwdRow)
 
 	// Left column: one row per tool with MAIN + SUB checkboxes
 	leftScroll := container.NewScroll(container.NewVBox(model.toolRows...))
@@ -337,6 +342,7 @@ func saveSettingsFyne() {
 		Port:                 State.GetPort(),
 		RemoteAccess:         State.IsRemoteAccessEnabled(),
 		SubagentLLMAPI:       State.GetSubagentLLMAPI(),
+		Config:               State.GetConfig(),
 	}
 
 	State.mu.RLock()

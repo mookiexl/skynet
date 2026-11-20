@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ApplyReplace performs an exact-match replacement with an ambiguity check.
@@ -19,13 +20,27 @@ func ApplyReplace(content, search, replacement string, replaceAll bool) (count i
 	return count, strings.Replace(content, search, replacement, 1), nil
 }
 
+// TruncateRuneSafe truncates s to at most limit bytes without splitting a
+// multi-byte UTF-8 rune. The result is valid UTF-8 whenever s is.
+func TruncateRuneSafe(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	i := limit
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return s[:i]
+}
+
 // TruncateOutput truncates a string to MaxTextLimit characters.
 // Returns the (possibly truncated) string and whether truncation occurred.
 func TruncateOutput(s string) (string, bool) {
-	if len(s) <= MaxTextLimit {
+	limit := int(MaxTextLimit.Load())
+	if len(s) <= limit {
 		return s, false
 	}
-	return s[:MaxTextLimit], true
+	return TruncateRuneSafe(s, limit), true
 }
 
 // ErrorResult creates a standardized error response map.

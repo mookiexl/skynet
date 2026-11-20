@@ -130,6 +130,9 @@ func ExecuteFileInsertText(args map[string]any) (any, error) {
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 		return ErrorResult("missing required arguments: path, anchor_text, text_to_insert, insert_before, insert_all are required"), nil
 	}
+	if anchor == "" {
+		return ErrorResult("anchor_text must be non-empty"), nil
+	}
 
 	validatedPath, err := ValidatePath(path)
 	if err != nil {

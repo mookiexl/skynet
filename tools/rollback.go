@@ -51,7 +51,7 @@ func CreateRollbackEntry(absPath, relPath string) (hash, reason string) {
 // CreateRollbackEntryFromContent saves the given pre-mutation content to a
 // rollback entry for relPath. See CreateRollbackEntry for the return values.
 func CreateRollbackEntryFromContent(relPath string, content []byte) (hash, reason string) {
-	if len(content) > MaxRollbackSize {
+	if len(content) > int(MaxRollbackSize.Load()) {
 		return "", RollbackUnavailable
 	}
 	hash = fmt.Sprintf("%x", md5.Sum(append([]byte(relPath), append([]byte("\n"), content...)...)))
